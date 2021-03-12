@@ -8,4 +8,3 @@ def test_calc_score():
         }
     }
     assert core.calc_score(calc_data) == 92, "Should be 92"
-

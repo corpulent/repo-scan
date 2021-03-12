@@ -1,5 +1,7 @@
 import os
+import json
 import requests
+import subprocess
 from pip_check_reqs import find_extra_reqs, common
 
 from .helpers import create_dir_tree, requirements_file_exist, clean_up_repo, clone_repo
@@ -57,7 +59,7 @@ def python_check_repo_reqs(requirements_file, **kwargs):
     return find_extra_reqs.find_extra_reqs(options, requirements_file)
 
 
-def python_repo_run(repo_path: str) -> dict:
+def python_repo_run(repo_path: str, sast_scan: bool) -> dict:
     """Run scans for Python specific repo.
 
     Args:
@@ -78,6 +80,30 @@ def python_repo_run(repo_path: str) -> dict:
     else:
         ret['req']['message'] = "Missing requirements.txt file."
     
+    if sast_scan:
+        ret['sast'] = {
+            'source_analysis': None,
+            'security_analysis': None
+        }
+
+        command = f"scan --src {repo_path} --out_dir {repo_path}/reports --type python,depscan"
+        _ = subprocess.Popen(command.split(' '),
+                            stdout=subprocess.PIPE, 
+                            stderr=subprocess.PIPE).wait()
+
+        report_read = open(f"{repo_path}/reports/scan-full-report.json", 'r')
+        report_read_lines = report_read.readlines()
+
+        try:
+            ret['sast']['source_analysis'] = json.loads(report_read_lines[0])
+        except IndexError:
+            pass
+        
+        try:
+            ret['sast']['security_analysis'] = json.loads(report_read_lines[1])
+        except IndexError:
+            pass
+
     return ret
 
 
@@ -90,19 +116,36 @@ def calc_score(scan_data: dict) -> int:
     Returns:
         Integer score.
     """
-    total_score = 100
+    total_score = None
     total_unused = scan_data['req']['extras']
 
     if total_unused:
         total_unused_num = len(total_unused)
-        total_score = total_score - (100 * total_unused_num / 100)
-    else:
-        total_score = None
+        total_score = 100 - total_unused_num
+
+    try:
+        sast_source_analysis = scan_data['sast']['source_analysis']
+        sast_security_analysis = scan_data['sast']['security_analysis']
+        source_analysis_metrics_total = 0
+        security_analysis_metrics_total = 0
+
+        if sast_source_analysis:
+            source_analysis_metrics_total = sast_source_analysis['properties']['metrics']['total']
+
+        if sast_security_analysis:
+            security_analysis_metrics_total = sast_security_analysis['properties']['metrics']['total']
+
+        if total_score:
+            total_score -= (source_analysis_metrics_total + security_analysis_metrics_total)
+        else:
+            total_score = 100 - (source_analysis_metrics_total + security_analysis_metrics_total)
+    except KeyError:
+        pass
     
     return total_score
 
 
-def run(date_created: str, limit: int, language="python") -> dict:
+def run(date_created: str, limit: int, sast_scan=False, language="python") -> dict:
     """Main run function. Defaulting to python language for repo fetch.
 
     - Fetch trending list.
@@ -126,13 +169,13 @@ def run(date_created: str, limit: int, language="python") -> dict:
             'owner': repo['owner']['login'],
             'html_url': repo['html_url']
         }
-        download_to = f"{os.getcwd()}/repos/"
+        download_to = f"{os.getcwd()}/repos"
         repo_path = f"{download_to}/{repo_name}"
         create_dir_tree(download_to)
         clone_repo(repo['git_url'], download_to)
 
         if language == "python":
-            scan_data = python_repo_run(repo_path)
+            scan_data = python_repo_run(repo_path, sast_scan)
         else:
             scan_data = {
                 'req': {
@@ -144,5 +187,5 @@ def run(date_created: str, limit: int, language="python") -> dict:
         resp[repo_name]['scan'] = scan_data
         resp[repo_name]['score'] = calc_score(scan_data)
         clean_up_repo(repo_path)
-    
+
     return resp

@@ -1,4 +1,5 @@
 FROM python:3.8
+FROM shiftleft/scan
 
 WORKDIR /srv/src
 

@@ -9,10 +9,12 @@ if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument('-l', '--limit', help='Number of top trending repos', required=True, dest='limit')
     arg_parser.add_argument('-d', '--date-created', help='Date created, like 2021-01-01', required=True, dest='date_created')
+    arg_parser.add_argument('-s', '--sast-scan', help='Include a SAST scan report.', required=False, dest='sast_scan')
     args = arg_parser.parse_args()
     limit = args.limit
     date_created = args.date_created
-    ret = run(date_created, limit)
+    sast_scan = bool(vars(args).get('sast_scan', False))
+    ret = run(date_created, limit, sast_scan)
 
     for k, v in ret.items():
         print("\n")
