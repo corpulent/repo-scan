@@ -17,4 +17,11 @@ Using Makefile
 ```
 make init
 make test
+make run
+```
+
+Run the script directly
+
+```
+python main.py -l 10 -d 2021-01-01
 ```
